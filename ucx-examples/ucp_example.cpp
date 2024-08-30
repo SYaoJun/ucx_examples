@@ -132,7 +132,7 @@ static void request_init(void *request)
 
 static void send_handler(void *request, ucs_status_t status, void *ctx)
 {
-    struct ucp_request_context *context = ctx;
+    struct ucp_request_context *context = (ucp_request_context *)ctx;
 
     context->completed = 1;
 
@@ -164,7 +164,7 @@ static void recv_msg_handler(void *request, ucs_status_t status,
 
 static void tag_recv_handler(void *request, ucs_status_t status, const ucp_tag_recv_info_t *info, void *ctx)
 {
-    struct ucp_request_context *context = ctx;
+    struct ucp_request_context *context = (ucp_request_context*)ctx;
 
     context->completed = 1;
 
@@ -173,7 +173,7 @@ static void tag_recv_handler(void *request, ucs_status_t status, const ucp_tag_r
 
 static void stream_recv_handler(void *request, ucs_status_t status, size_t length, void *ctx)
 {
-    struct ucp_request_context *context = ctx;
+    struct ucp_request_context *context = (ucp_request_context*)ctx;
 
     context->completed = 1;
 }
@@ -226,7 +226,7 @@ static char* sockaddr_get_ip_str(const struct sockaddr_storage *sock_addr,
         inet_ntop(AF_INET6, &addr_in6.sin6_addr, ip_str, max_size);
         return ip_str;
     default:
-        return "Invalid address family";
+        return (char*)"Invalid address family";
     }
 }
 
@@ -246,13 +246,13 @@ static char* sockaddr_get_port_str(const struct sockaddr_storage *sock_addr,
         snprintf(port_str, max_size, "%d", ntohs(addr_in6.sin6_port));
         return port_str;
     default:
-        return "Invalid address family";
+        return (char*)"Invalid address family";
     }
 }
 
 static void server_conn_handle_cb(ucp_conn_request_h conn_request, void *arg)
 {
-    ucp_connect_context_t *context = arg;
+    ucp_connect_context_t *context = (ucp_connect_context_t*)arg;
     ucp_conn_request_attr_t attr;
     char ip_str[IP_STRING_LEN];
     char port_str[PORT_STRING_LEN];
@@ -438,7 +438,7 @@ ucs_status_t exchangeWorkerAddresses(ucp_worker_h& ucp_worker, const char* ip){
         CHKERR_JUMP_RETVAL(ret != (int)sizeof(addr_len), "receive address length\n", err_addr, ret);
 
         peer_addr_len = addr_len;
-        peer_addr = malloc(peer_addr_len);
+        peer_addr = (ucp_address_t*)malloc(peer_addr_len);
         CHKERR_JUMP(!peer_addr, "allocate memory\n", err_addr);
 
         ret = recv(oob_sock, peer_addr, peer_addr_len, MSG_WAITALL);
@@ -549,12 +549,12 @@ ucs_status_t establishConnection(ucp_worker_h& ucp_worker, ucp_ep_h& ep, const c
 
             //| 创建ep建立连接
             memcpy(&peer_addr_len, buf, sizeof(peer_addr_len));
-            peer_addr = malloc(peer_addr_len);
+            peer_addr = (ucp_address_t*)malloc(peer_addr_len);
             if(peer_addr == NULL){
                 free(buf);
                 return UCS_ERR_UNSUPPORTED;
             }
-            memcpy(peer_addr, buf+sizeof(peer_addr_len), peer_addr_len);
+            memcpy(peer_addr, (char*)buf+sizeof(peer_addr_len), peer_addr_len);
             free(buf);
 
             ep_params.field_mask    = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
@@ -598,7 +598,7 @@ ucs_status_t establishConnection(ucp_worker_h& ucp_worker, ucp_ep_h& ep, const c
             memset(buf, 0, buf_len);
             if(buf == NULL) {return UCS_ERR_UNSUPPORTED;}
             memcpy(buf, &local_addr_len, sizeof(local_addr_len));
-            memcpy(buf+sizeof(local_addr_len), local_addr, local_addr_len);
+            memcpy((char*)buf+sizeof(local_addr_len), local_addr, local_addr_len);
 
             fprintf(stdout, "local address composed!\n");
 
@@ -768,7 +768,7 @@ ucs_status_ptr_t send_recv_stream(ucp_worker_h ucp_worker, ucp_ep_h ep, void* bu
         req_param.cb.recv_stream = stream_recv_handler;
         request = ucp_stream_recv_nbx(ep, buf, buf_size, &recv_size, &req_param);
         if(request==NULL){
-            fprintf(stdout, "Expecting receiving %d Bytes with %d actually!\n", buf_size, recv_size);
+            fprintf(stdout, "Expecting receiving %ld Bytes with %ld actually!\n", buf_size, recv_size);
             buf_size = recv_size;
         }
     }

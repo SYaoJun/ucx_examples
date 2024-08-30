@@ -6,3 +6,6 @@ uct_hello_world: uct_hello_world.c
 
 ucp_client_server: ucp_client_server.c
 	gcc -o ucp_client_server ucp_client_server.c -lucp -lucs -luct
+
+ucp_example: ucp_example.cpp
+	g++ -o ucp_example ucp_example.cpp -lucp -lucs -luct
