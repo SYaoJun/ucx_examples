@@ -471,6 +471,7 @@ static int send_recv_tag(ucp_worker_h ucp_worker, ucp_ep_h ep, int is_server,
         param.cb.recv = tag_recv_cb;
         request       = ucp_tag_recv_nbx(ucp_worker, msg, msg_length, TAG, 0,
                                          &param);
+        // send data to client 
     }
     /*client and server all will print the context*/
     return request_finalize(ucp_worker, request, &ctx, is_server, iov,
