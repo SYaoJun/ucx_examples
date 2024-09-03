@@ -14,9 +14,10 @@ static ucp_ep_h server_ep;
 static ucp_ep_h client_ep;
 static int server_running = 1;
 
-void get_data(const request_t *req, response_t *resp) {
-    snprintf(resp->message, sizeof(resp->message), "world");
-}
+struct ucx_context {
+    int             completed;
+};
+
 
 void init_ucx() {
     ucp_params_t ucp_params;
@@ -49,46 +50,50 @@ void cleanup_ucx() {
 static void request_completed(void *request, ucs_status_t status, void *user_data) {
     if (status != UCS_OK) {
         fprintf(stderr, "Request failed\n");
-    }else{
+    } else {
         printf("send data ok\n");
     }
     ucp_request_free(request);
 }
-struct ucx_context {
-    int             completed;
-};
-static void recv_handler(void *request, ucs_status_t status,
+static void client_recv_handler(void *request, ucs_status_t status,
                          const ucp_tag_recv_info_t *info, void *user_data)
 {
-    struct ucx_context *context = (struct ucx_context *)request;
-
-    context->completed = 1;
-
-    printf("[0x%x] receive handler called with status %d (%s), length %lu\n",
-           (unsigned int)pthread_self(), status, ucs_status_string(status),
-           info->length);
-}
-
-static void handle_request(void *request, ucs_status_t status, const ucp_tag_recv_info_t *info, void *user_data) {
-    request_t *req = (request_t *)request;
-    response_t resp;
-    printf("server receive data = %s\n", req->message);
-    get_data(req, &resp);
-
-    ucp_request_param_t send_param;
-    memset(&send_param, 0, sizeof(send_param));
-    send_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK;
-    send_param.cb.send = request_completed;
-
-    void *send_request = ucp_tag_send_nbx(server_ep, &resp, sizeof(resp), 0, &send_param);
-    if (UCS_PTR_IS_ERR(send_request)) {
-        fprintf(stderr, "Failed to send response\n");
+        puts("enter...");
+    if (status != UCS_OK) {
+        fprintf(stderr, "Receive request failed\n");
     } else {
-        ucp_request_free(send_request);
+        request_t *req = (request_t *)user_data;
+        printf("client received data: %s\n", req->message);
     }
     ucp_request_free(request);
 }
+static void recv_handler(void *request, ucs_status_t status,
+                         const ucp_tag_recv_info_t *info, void *user_data)
+{
+    if (status != UCS_OK) {
+        fprintf(stderr, "Receive request failed\n");
+    } else {
+        request_t *req = (request_t *)user_data;
+        response_t resp;
+        printf("server received data: %s\n", req->message);
+        strcpy(resp.message, "world");
 
+        ucp_request_param_t send_param;
+        memset(&send_param, 0, sizeof(send_param));
+        send_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA;
+        send_param.cb.send = request_completed;
+        send_param.user_data = NULL;
+
+        void *send_request = ucp_tag_send_nbx(server_ep, &resp, sizeof(resp), 0, &send_param);
+        if (UCS_PTR_IS_ERR(send_request)) {
+            fprintf(stderr, "Failed to send response\n");
+        } else {
+            printf("Server sent response\n");
+            ucp_request_free(send_request);
+        }
+    }
+    ucp_request_free(request);
+}
 
 static void server_connection_handler(ucp_conn_request_h conn_request, void *arg) {
     ucp_ep_params_t ep_params;
@@ -102,7 +107,7 @@ static void server_connection_handler(ucp_conn_request_h conn_request, void *arg
     if (status != UCS_OK) {
         fprintf(stderr, "Failed to create UCX endpoint\n");
         exit(1);
-    }else{
+    } else {
         puts("create connection for client");
     }
 
@@ -110,14 +115,16 @@ static void server_connection_handler(ucp_conn_request_h conn_request, void *arg
 
     ucp_request_param_t recv_param;
     memset(&recv_param, 0, sizeof(recv_param));
-    recv_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK;
-    recv_param.cb.recv = (ucp_tag_recv_nbx_callback_t)handle_request;
-    puts("start receive message");
+    recv_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA;
+    recv_param.cb.recv = recv_handler;
+    recv_param.user_data = request;
+    puts("start receiving message");
+
     void *recv_request = ucp_tag_recv_nbx(ucp_worker, request, sizeof(*request), 0, 0, &recv_param);
     if (UCS_PTR_IS_ERR(recv_request)) {
         fprintf(stderr, "Failed to receive request\n");
         free(request);
-    }else{
+    } else {
         puts("server receive success");
     }
 }
@@ -145,8 +152,7 @@ void start_server() {
     listen_addr.sin_addr.s_addr = INADDR_ANY;
     listener_params.sockaddr.addr = (const struct sockaddr *)&listen_addr;
     listener_params.sockaddr.addrlen = sizeof(listen_addr);
-    // after client connect to server, the function will work
-    listener_params.conn_handler.cb = server_connection_handler; 
+    listener_params.conn_handler.cb = server_connection_handler;
     listener_params.conn_handler.arg = NULL;
 
     status = ucp_listener_create(ucp_worker, &listener_params, &listener);
@@ -194,20 +200,19 @@ void send_request() {
     if (status != UCS_OK) {
         fprintf(stderr, "Failed to create UCX endpoint\n");
         exit(1);
-    }else{
+    } else {
         printf("create connection\n");
     }
 
-    char* msg = "hello";
     request_t req;
     response_t resp;
-    strcpy(req.message, msg);
+    strcpy(req.message, "hello");
 
     ucp_request_param_t send_param;
     memset(&send_param, 0, sizeof(send_param));
-    send_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK;
+    send_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA;
     send_param.cb.send = request_completed;
-    send_param.user_data = "hello";
+    send_param.user_data = NULL;
 
     void *send_request = ucp_tag_send_nbx(client_ep, &req, sizeof(req), 0, &send_param);
     if (UCS_PTR_IS_ERR(send_request)) {
@@ -219,15 +224,16 @@ void send_request() {
 
     ucp_request_param_t recv_param;
     memset(&recv_param, 0, sizeof(recv_param));
-    recv_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK;
-    recv_param.cb.recv = recv_handler;
+    recv_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA;
+    recv_param.cb.recv = client_recv_handler;
+    recv_param.user_data = &resp;
 
     void *recv_request = ucp_tag_recv_nbx(ucp_worker, &resp, sizeof(resp), 0, 0, &recv_param);
     if (UCS_PTR_IS_ERR(recv_request)) {
         fprintf(stderr, "Failed to receive response\n");
     } else {
-        ucp_request_free(recv_request);
         printf("Client received: %s\n", resp.message);
+        ucp_request_free(recv_request);
     }
 
     ucp_ep_destroy(client_ep);
