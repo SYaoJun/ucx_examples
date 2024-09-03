@@ -382,6 +382,11 @@ fill_request_param(ucp_dt_iov_t *iov, int is_client,
 
     *msg        = (iov_cnt == 1) ? iov[0].buffer : iov;
     *msg_length = (iov_cnt == 1) ? iov[0].length : iov_cnt;
+    if(is_client){
+        strcpy(*msg, "hello");
+    }else{
+        strcpy(*msg, "world");
+    }
 
     ctx->complete       = 0;
     param->op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
@@ -456,16 +461,18 @@ static int send_recv_tag(ucp_worker_h ucp_worker, ucp_ep_h ep, int is_server,
     }
 
     if (!is_server) {
+        puts("client");
         /* Client sends a message to the server using the Tag-Matching API */
         param.cb.send = send_cb;
         request       = ucp_tag_send_nbx(ep, msg, msg_length, TAG, &param);
     } else {
         /* Server receives a message from the client using the Tag-Matching API */
+        puts("server");
         param.cb.recv = tag_recv_cb;
         request       = ucp_tag_recv_nbx(ucp_worker, msg, msg_length, TAG, 0,
                                          &param);
     }
-
+    /*client and server all will print the context*/
     return request_finalize(ucp_worker, request, &ctx, is_server, iov,
                             current_iter);
 }
@@ -1102,21 +1109,22 @@ err:
 }
 
 
-int main(int argc, char **argv)
+int run(int is_server)
 {
-    send_recv_type_t send_recv_type = CLIENT_SERVER_SEND_RECV_DEFAULT;
-    char *server_addr = NULL;
-    char *listen_addr = NULL;
+    send_recv_type_t send_recv_type = CLIENT_SERVER_SEND_RECV_TAG;
+    /*server IP is fixed, and it can read from configuration file*/
+    char *server_addr = "127.0.0.1";
+    char *listen_addr = "127.0.0.1";
     int ret;
 
     /* UCP objects */
     ucp_context_h ucp_context;
     ucp_worker_h  ucp_worker;
 
-    ret = parse_cmd(argc, argv, &server_addr, &listen_addr, &send_recv_type);
-    if (ret != 0) {
-        goto err;
-    }
+    // ret = parse_cmd(argc, argv, &server_addr, &listen_addr, &send_recv_type);
+    // if (ret != 0) {
+    //     goto err;
+    // }
 
     /* Initialize the UCX required objects */
     ret = init_context(&ucp_context, &ucp_worker, send_recv_type);
@@ -1125,7 +1133,7 @@ int main(int argc, char **argv)
     }
 
     /* Client-Server initialization */
-    if (server_addr == NULL) {
+    if (is_server) {
         /* Server side */
         ret = run_server(ucp_context, ucp_worker, listen_addr, send_recv_type);
     } else {
@@ -1137,4 +1145,11 @@ int main(int argc, char **argv)
     ucp_cleanup(ucp_context);
 err:
     return ret;
+}
+
+void start_client_rpc(){
+    run(0);
+}
+void start_server_rpc(){
+    run(1);
 }

@@ -16,7 +16,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <netdb.h>
-
+#include "rpc.h"
 #ifdef HAVE_CUDA
 #  include <cuda_runtime.h>
 #endif
