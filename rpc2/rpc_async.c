@@ -14,8 +14,7 @@ static ucp_listener_h listener;
 static ucp_ep_h server_ep;
 static ucp_ep_h client_ep;
 static int server_running = 1;
-static const ucp_tag_t tag  = 0x1337a880u;
-static const ucp_tag_t tag_mask = UINT64_MAX;
+
 typedef struct ucx_context {
     int completed;
 }ucx_context_t;
@@ -55,11 +54,8 @@ static void request_completed(void *request, ucs_status_t status, void *user_dat
     } else {
         fprintf(stdout, "send data ok\n");
     }
-    if(user_data){
-        ucx_context_t *ctx = (ucx_context_t*)user_data;
-        ctx->completed = 1;
-    }
-    
+    ucx_context_t *ctx = (ucx_context_t*)user_data;
+    ctx->completed = 1;
     ucp_request_free(request);
 }
 static void client_recv_handler(void *request, ucs_status_t status,
@@ -91,11 +87,11 @@ static void recv_handler(void *request, ucs_status_t status,
         send_param.cb.send = request_completed;
         send_param.user_data = NULL;
 
-        void *send_request = ucp_tag_send_nbx(server_ep, &resp, sizeof(resp), tag, &send_param);
+        void *send_request = ucp_tag_send_nbx(server_ep, &resp, sizeof(resp), 0, &send_param);
         if (UCS_PTR_IS_ERR(send_request)) {
             fprintf(stderr, "Failed to send response\n");
         } else {
-            printf("Server: response client success\n");
+            printf("Server sent response\n");
         }
     }
     ucp_request_free(request);
@@ -125,7 +121,7 @@ static void server_connection_handler(ucp_conn_request_h conn_request, void *arg
     recv_param.cb.recv = recv_handler;
     recv_param.user_data = request;
 
-    void *recv_request = ucp_tag_recv_nbx(ucp_worker, request, sizeof(*request), tag, tag_mask, &recv_param);
+    void *recv_request = ucp_tag_recv_nbx(ucp_worker, request, sizeof(*request), 0, 0, &recv_param);
     if (UCS_PTR_IS_ERR(recv_request)) {
         fprintf(stderr, "Failed to receive request\n");
     } else {
@@ -218,18 +214,18 @@ void send_request() {
     memset(&send_param, 0, sizeof(send_param));
     send_param.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK | UCP_OP_ATTR_FIELD_USER_DATA;
     send_param.cb.send = request_completed;
-    send_param.user_data = NULL;
+    send_param.user_data = ctx;
 
-    void *send_request = ucp_tag_send_nbx(client_ep, &req, sizeof(req), tag, &send_param);
+    void *send_request = ucp_tag_send_nbx(client_ep, &req, sizeof(req), 0, &send_param);
     if (UCS_PTR_IS_ERR(send_request)) {
         fprintf(stderr, "Failed to send request\n");
     } else {
-        ucp_worker_fence(ucp_worker);
         fprintf(stdout, "main send ok\n");
-        ucp_request_free(send_request);
     }
      
-
+    while(ctx->completed != 1){
+        sleep(1);
+    }
     // receive data from server
     ucp_request_param_t recv_param;
     response_t *resp = (response_t*)malloc(sizeof(response_t));
@@ -238,17 +234,18 @@ void send_request() {
     recv_param.cb.recv = client_recv_handler;
     recv_param.user_data = resp;
 
-    void *recv_request = ucp_tag_recv_nbx(ucp_worker, resp, sizeof(*resp), tag, tag_mask, &recv_param);
+    void *recv_request = ucp_tag_recv_nbx(ucp_worker, resp, sizeof(*resp), 0, 0, &recv_param);
     if (UCS_PTR_IS_ERR(recv_request)) {
         fprintf(stderr, "Failed to receive response\n");
     } else {
-        ucp_worker_fence(ucp_worker);
         fprintf(stdout, "Client received: %s\n", resp->message);
-        ucp_request_free(recv_request);
         
     }
-    
-    
+    while (1) {
+        ucp_worker_progress(ucp_worker);
+    }
+    ucp_request_free(send_request);
+    ucp_request_free(recv_request);
     ucp_ep_destroy(client_ep);
     ucp_worker_destroy(ucp_worker);
 }

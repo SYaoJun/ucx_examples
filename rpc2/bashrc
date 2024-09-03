@@ -1,2 +1,2 @@
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/ucxtest/rpc
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/ucxtest/rpc2
 export LD_LIBRARY_PATH

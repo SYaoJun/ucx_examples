@@ -366,6 +366,7 @@ ucs_status_t createUcpContext(ucp_context_h& ucp_context){
     ucs_status_t status;
 
     memset(&ucp_params, 0, sizeof(ucp_params));
+    /*TODO: can we remove this line for not given configuration file*/
     status = ucp_config_read(NULL, NULL, &config);
     if(status != UCS_OK) {return status;}
     //? 这里request size相关还有必要设置吗 在有nbx的情况
@@ -389,7 +390,7 @@ ucs_status_t createUcpContext(ucp_context_h& ucp_context){
     return status;
 }
 
-ucs_status_t registAndPackRemoteAccessMemory(ucp_context_h& ucp_context, ucp_mem_h& mem_handle, void* buf, size_t buf_size, void*& rkey_buf, size_t& rkey_buf_size){
+ucs_status_t registerAndPackRemoteAccessMemory(ucp_context_h& ucp_context, ucp_mem_h& mem_handle, void* buf, size_t buf_size, void*& rkey_buf, size_t& rkey_buf_size){
     ucp_mem_map_params_t mem_param;
     ucs_status_t status;
 
@@ -742,15 +743,13 @@ ucs_status_ptr_t send_recv_rma(ucp_worker_h ucp_worker, ucp_ep_h ep, void* buf, 
 
     return request;
 }
-
+/*TODO: Not implemented*/
 ucs_status_ptr_t send_recv_am(ucp_worker_h ucp_worker, ucp_ep_h ep, void* buf, size_t& buf_size, ucp_request_context& ctx, bool is_send = true){
     fprintf(stderr, "Can't support UCP-AM mode!\n");
     return UCS_STATUS_PTR(UCS_ERR_UNSUPPORTED);
 }
 
 ucs_status_ptr_t send_recv_stream(ucp_worker_h ucp_worker, ucp_ep_h ep, void* buf, size_t& buf_size, ucp_request_context& ctx, bool is_send = true){
-    //fprintf(stderr, "Can't support UCP-Stream mode!\n");
-    //return UCS_STATUS_PTR(UCS_ERR_UNSUPPORTED);
     ucp_request_param_t req_param;
     ucs_status_ptr_t request;
     size_t recv_size;
@@ -775,7 +774,7 @@ ucs_status_ptr_t send_recv_stream(ucp_worker_h ucp_worker, ucp_ep_h ep, void* bu
 
     return request;
 }
-
+/*send and recv data*/
 ucs_status_t send_recv(ucp_worker_h ucp_worker, ucp_ep_h ep, void* buf, size_t& buf_size, bool is_send = true, ucp_example_communication_mode_t comm_mode = COMMUNICATION_MODE_TAG){
     ucs_status_ptr_t request = NULL;
     struct ucp_request_context ctx;
@@ -815,10 +814,10 @@ ucs_status_t send_recv(ucp_worker_h ucp_worker, ucp_ep_h ep, void* buf, size_t& 
     status = ucp_request_check_status(request);
     //(*release_request)(request);
     ucp_request_free(request);
-    fprintf(stdout, "Realse request!\n");
+    fprintf(stdout, "Release request!\n");
     return status;
 }
-
+/*for rdma and am mode*/
 ucs_status_t transferRemoteMemoryHandle(ucp_worker_h ucp_worker, ucp_ep_h ep, void* local_buf, void* rkey_buf, size_t rkey_buf_size){
     ucs_status_t status;
 
@@ -943,7 +942,7 @@ int main(int argc, char **argv)
     if(ucp_communication_mode == COMMUNICATION_MODE_RMA || ucp_communication_mode == COMMUNICATION_MODE_AM){
         rma_buf = malloc(rma_buf_size);
         memset(rma_buf, 0, rma_buf_size);
-        status = registAndPackRemoteAccessMemory(ucp_context, memh, rma_buf, rma_buf_size, rkey_buf, rkey_buf_size);
+        status = registerAndPackRemoteAccessMemory(ucp_context, memh, rma_buf, rma_buf_size, rkey_buf, rkey_buf_size);
     }
 
     status = createUcpWorker(ucp_context, ucp_worker);
@@ -982,7 +981,7 @@ int main(int argc, char **argv)
         if(!ret && !err_handling_opt.failure) {
             /* Make sure remote is disconnected before destroying local worker */
             ret = barrier(oob_sock);
-            fprintf(stdout, "OOB Barriered!\n");
+            fprintf(stdout, "OOB barrier!\n");
         }
         close(oob_sock);
     }
@@ -1002,7 +1001,7 @@ err_ep:
 err_listener:
     if(ucp_connect_mode==CONNECT_MODE_LISTENER && client_target_name==NULL){
         ucp_listener_destroy(conn_ctx.listener);
-        fprintf(stdout, "listener has been destoried!\n");
+        fprintf(stdout, "listener has been destroyed!\n");
     } 
 err_worker:
     ucp_worker_destroy(ucp_worker);
@@ -1066,14 +1065,14 @@ static ucs_status_t parse_cmd(int argc, char * const argv[], char **server_name,
                 case int('w'):ucp_wakeup_mode = WAKEUP_MODE_WAIT; break;
                 case int('e'):ucp_wakeup_mode = WAKEUP_MODE_EVENTFD; break;
                 case int('p'):ucp_wakeup_mode = WAKEUP_MODE_PROBE; break;
-                default:fprintf(stderr,"Unsupport wakeup mode!\n");return UCS_ERR_UNSUPPORTED;
+                default:fprintf(stderr,"Unsupported wakeup mode!\n");return UCS_ERR_UNSUPPORTED;
             }
             break;
         case 'c':
             switch (int((char)*optarg)){
                 case int('a'):ucp_connect_mode = CONNECT_MODE_ADDRESS; break;
                 case int('l'):ucp_connect_mode = CONNECT_MODE_LISTENER; break;
-                default:fprintf(stderr,"Unsupport connect mode!\n");return UCS_ERR_UNSUPPORTED;
+                default:fprintf(stderr,"Unsupported connect mode!\n");return UCS_ERR_UNSUPPORTED;
             }
             break;
         case 'o':
@@ -1082,7 +1081,7 @@ static ucs_status_t parse_cmd(int argc, char * const argv[], char **server_name,
                 case int('r'):ucp_communication_mode = COMMUNICATION_MODE_RMA; break;
                 case int('a'):ucp_communication_mode = COMMUNICATION_MODE_AM; break;
                 case int('s'):ucp_communication_mode = COMMUNICATION_MODE_STREAM; break;
-                default:fprintf(stderr,"Unsupport communication mode!\n");return UCS_ERR_UNSUPPORTED;
+                default:fprintf(stderr,"Unsupported communication mode!\n");return UCS_ERR_UNSUPPORTED;
             }
             break;
         case 'n':
